@@ -264,10 +264,34 @@ DATE_PRESET_MAP = {
     "Quarter to Date": "QTD",
     "Year to Date": "YTD",
 }
-DATE_PRESETS = list(DATE_PRESET_MAP.keys())
+DATE_PRESETS = list(DATE_PRESET_MAP.keys()) + ["Custom"]
+
+def dates_for(code, today):
+    if code == "TODAY":
+        return today, today
+    if code == "WTD":
+        return today - timedelta(days=today.weekday()), today
+    if code == "MTD":
+        return today.replace(day=1), today
+    if code == "QTD":
+        month = ((today.month - 1) // 3) * 3 + 1
+        return today.replace(month=month, day=1), today
+    return today.replace(month=1, day=1), today
+
+def on_preset_change():
+    code = DATE_PRESET_MAP.get(st.session_state.date_preset, "CUSTOM")
+    if code != "CUSTOM":
+        st.session_state.date_range = dates_for(code, datetime.now().date())
+
+def on_range_change():
+    st.session_state.date_preset = "Custom"
 
 if "last_refreshed" not in st.session_state:
     st.session_state.last_refreshed = datetime.now()
+if "date_preset" not in st.session_state:
+    st.session_state.date_preset = "Week to Date"
+if "date_range" not in st.session_state:
+    st.session_state.date_range = dates_for("YTD", datetime.now().date())
 
 title_col, range_col = st.columns([3.2, 1.3])
 with title_col:
@@ -278,36 +302,34 @@ with title_col:
         f"Last refreshed: {st.session_state.last_refreshed.strftime('%Y-%m-%d %H:%M:%S')}</div>",
         unsafe_allow_html=True,
     )
+
 with range_col:
-    preset_label = st.selectbox(
+    st.selectbox(
         "Date Range",
         DATE_PRESETS,
-        index=DATE_PRESETS.index("Year to Date"),
+        key="date_preset",
+        on_change=on_preset_change,
     )
-    preset = DATE_PRESET_MAP[preset_label]
+    st.date_input(
+        "Custom range",
+        key="date_range",
+        max_value=datetime.now().date(),
+        format="YYYY-MM-DD",
+        label_visibility="collapsed",
+        on_change=on_range_change,
+    )
 
-today = datetime.now().date()
-if preset == "TODAY":
-    start_date = today
-    end_date = today
-elif preset == "WTD":
-    start_date = today - timedelta(days=today.weekday())  # Monday
-    end_date = today
-elif preset == "MTD":
-    start_date = today.replace(day=1)
-    end_date = today
-elif preset == "QTD":
-    quarter_start_month = ((today.month - 1) // 3) * 3 + 1
-    start_date = today.replace(month=quarter_start_month, day=1)
-    end_date = today
-else:  # YTD
-    start_date = today.replace(month=1, day=1)
-    end_date = today
+picked = st.session_state.date_range
+if isinstance(picked, (tuple, list)) and len(picked) == 2:
+    start_date, end_date = picked
+else:
+    start_date = end_date = datetime.now().date()
+preset = DATE_PRESET_MAP.get(st.session_state.date_preset, "CUSTOM")
 
 with range_col:
     st.markdown(
         f'<div style="color:{MUTED};font-size:0.72rem;margin-top:-0.35rem;">'
-        f'{start_date.strftime("%b %d, %Y")} → {end_date.strftime("%b %d, %Y")}'
+        f'{start_date.strftime("%Y-%m-%d")} → {end_date.strftime("%Y-%m-%d")}'
         f'</div>',
         unsafe_allow_html=True,
     )
