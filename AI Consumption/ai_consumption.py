@@ -721,7 +721,64 @@ st.markdown("---")
 st.subheader("Top Users by AI Credits")
 
 #Tabs showing top users by Service type
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["AISQL Functions", "Cortex Agents", "AI Functions", "Cortex Code (Snowsight)", "Cortex Code (CLI)"])
+#tab1, tab2, tab3, tab4, tab5 = st.tabs(["AISQL Functions", "Cortex Agents", "AI Functions", "Cortex Code (Snowsight)", "Cortex Code (CLI)"])
+
+tab_total, tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "Total AI Use",
+    "AISQL Functions",
+    "Cortex Agents",
+    "AI Functions",
+    "Cortex Code (Snowsight)",
+    "Cortex Code (CLI)",
+])
+
+with tab_total:
+    st.dataframe(run(f"""
+    WITH usage AS (
+        SELECT u.NAME AS USER_NAME,
+               h.TOKEN_CREDITS AS CREDITS,
+               h.TOKENS AS TOKENS,
+               h.QUERY_ID AS REQUEST_ID
+        FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AISQL_USAGE_HISTORY h
+        LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.USERS u
+          ON TRY_CAST(h.USER_ID AS NUMBER) = u.USER_ID
+        WHERE h.USAGE_TIME >= '{p_start}' AND h.USAGE_TIME < '{p_end}'
+
+        UNION ALL
+        SELECT USER_NAME, TOKEN_CREDITS, TOKENS, REQUEST_ID
+        FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY
+        WHERE START_TIME >= '{p_start}' AND START_TIME < '{p_end}'
+
+        UNION ALL
+        SELECT u.NAME, h.CREDITS, NULL, h.QUERY_ID
+        FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AI_FUNCTIONS_USAGE_HISTORY h
+        LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.USERS u
+          ON h.USER_ID = u.USER_ID
+        WHERE h.START_TIME >= '{p_start}' AND h.START_TIME < '{p_end}'
+
+        UNION ALL
+        SELECT u.NAME, h.TOKEN_CREDITS, h.TOKENS, h.REQUEST_ID
+        FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_CODE_SNOWSIGHT_USAGE_HISTORY h
+        LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.USERS u
+          ON h.USER_ID = u.USER_ID
+        WHERE h.USAGE_TIME >= '{p_start}' AND h.USAGE_TIME < '{p_end}'
+
+        UNION ALL
+        SELECT u.NAME, h.TOKEN_CREDITS, h.TOKENS, h.REQUEST_ID
+        FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_CODE_CLI_USAGE_HISTORY h
+        LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.USERS u
+          ON h.USER_ID = u.USER_ID
+        WHERE h.USAGE_TIME >= '{p_start}' AND h.USAGE_TIME < '{p_end}'
+    )
+    SELECT COALESCE(USER_NAME, 'Unknown') AS USER_NAME,
+           ROUND(SUM(CREDITS), 4) AS TOTAL_CREDITS,
+           SUM(TOKENS) AS TOTAL_TOKENS,
+           COUNT(DISTINCT REQUEST_ID) AS REQUESTS
+    FROM usage
+    GROUP BY 1
+    ORDER BY TOTAL_CREDITS DESC
+    LIMIT 25
+    """, p_start, p_end), use_container_width=True, hide_index=True)
 
 with tab1:
     st.dataframe(run(f"""
