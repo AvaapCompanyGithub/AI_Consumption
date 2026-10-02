@@ -1,0 +1,27 @@
+definition_version: 2
+entities:
+  streamlit_app:
+    type: streamlit
+    identifier:
+      database: UTIL_DB
+      schema: STREAMLIT
+      name: AI_CONSUMPTION
+    title: AI Consumption
+    query_warehouse: REPORTS_WH
+    compute_pool: SYSTEM_COMPUTE_POOL_CPU
+    run_mode: SpcsOnly
+    execute_as: OWNER
+    main_file: ai_consumption.py
+    artifacts:
+      - pyproject.toml
+      - ai_consumption.py
+      - .streamlit/config.toml
+      - config.json
+    idle_auto_shutdown_time_seconds: 86400
+    schedules:
+      cron_exprs:
+        - 0 8 * * 1,2,3,4,5
+      timezone: America/New_York
+    sharing:
+      - role: SYSADMIN
+        with_grant_option: true
