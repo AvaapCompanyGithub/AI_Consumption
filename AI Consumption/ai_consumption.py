@@ -134,19 +134,43 @@ st.markdown(
       .subhead {{ color: {MUTED}; font-size: .75rem; margin: .1rem 0 .8rem 0; }}
 
       .card {{
-        border-radius: 12px; padding: .85rem 1rem 0.95rem 1rem; height: 100%;
-        text-align: left; background: {CARD_BG};
+        border-radius: 12px; padding: .75rem .9rem 0.85rem .9rem; height: 100%;
+        text-align: center; background: #EEF2F6;
         border: 1px solid #E2E8EE;
       }}
-      .card .label {{
-        font-size: .72rem; font-weight: 600; letter-spacing: .01em;
-        color: {MUTED}; margin-bottom: .35rem; line-height: 1.2;
+      .card.primary {{
+        background: {NAVY_LIGHT}; color: #FFFFFF; text-align: left;
+        padding: .85rem 1rem; border: none;
       }}
+      .card .label {{
+        font-size: .62rem; font-weight: 600; letter-spacing: .01em;
+        opacity: .85; margin-bottom: .2rem; line-height: 1.2;
+        color: {MUTED};
+      }}
+      .card.primary .label {{ color: rgba(255,255,255,.85); }}
       .card .value {{
-        font-size: 1.55rem; font-weight: 800; letter-spacing: -.03em;
+        font-size: 1.25rem; font-weight: 800; letter-spacing: -.03em;
         line-height: 1.15; font-variant-numeric: tabular-nums;
         color: {INK};
+        word-break: break-word;
       }}
+      .card.primary .value {{ color: #FFFFFF; font-size: 1.42rem; }}
+      .card .delta-pill {{
+        display: inline-block; margin-top: .35rem; margin-bottom: .25rem;
+        padding: .12rem .5rem; border-radius: 999px;
+        font-size: .62rem; font-weight: 600;
+      }}
+      .card .delta-pill.up {{ background: #D8F3E7; color: {GREEN}; }}
+      .card .delta-pill.down {{ background: #FDE8E8; color: {RED}; }}
+      .card .delta-pill.flat {{ background: #E6EBF0; color: {MUTED}; }}
+      .card.primary .delta-pill.up {{ background: rgba(125,255,179,.22); color: #7DFFB3; }}
+      .card.primary .delta-pill.down {{ background: rgba(255,180,180,.22); color: #FFB4B4; }}
+      .card.primary .delta-pill.flat {{ background: rgba(255,255,255,.16); color: rgba(255,255,255,.85); }}
+      .card .foot {{
+        font-size: .78rem; color: {MUTED}; margin-top: .15rem;
+        line-height: 1.35;
+      }}
+      .card.primary .foot {{ color: rgba(255,255,255,.78); }}
 
       .section-title {{
         font-size: 1.28rem; font-weight: 800; color: {INK};
@@ -400,22 +424,87 @@ SELECT
 #total_code_requests = run_query(total_code_requests_sql)["TOTAL_REQUESTS"].iloc[0]
 total_code_requests = run(total_code_requests_sql, p_start, p_end)["TOTAL_REQUESTS"].iloc[0]
 
-#Render it to the page
-st.markdown("---")
-st.markdown(f"Totals based on Date Range:", unsafe_allow_html=True)
-k1, k2, k3, k4, k5 = st.columns(5)
-with k1:
-    credit_color = "red" if delta_str.startswith("+") or delta_str == "New" else "green" if delta_str.startswith("-") else "inherit"
-    st.markdown(f"<div style='text-align:center;'><span style='font-size:12px;color:gray;'>Total AI Credits<br>(<span style='color:{credit_color};'>{delta_str}</span> vs prior)</span><br><span style='font-size:16px;font-weight:normal;color:{credit_color};'>{total_credits:,.4f}</span></div>", unsafe_allow_html=True)
-with k2:
-    burn_color = "red" if avg_daily > 1 else "green" if avg_daily > 0 else "gray"
-    st.markdown(f"<div style='text-align:center;'><span style='font-size:12px;color:gray;'>Avg Daily Burn</span><br><span style='font-size:16px;font-weight:normal;color:{burn_color};'>{avg_daily:,.4f}</span></div>", unsafe_allow_html=True)
-with k3:
-    st.markdown(f"<div style='text-align:center;'><span style='font-size:12px;color:gray;'>Top Service</span><br><span style='font-size:16px;font-weight:normal;'>{top_service}</span></div>", unsafe_allow_html=True)
-with k4:
-    st.markdown(f"<div style='text-align:center;'><span style='font-size:12px;color:gray;'>Active Services</span><br><span style='font-size:16px;font-weight:normal;'>{active_services}</span></div>", unsafe_allow_html=True)
-with k5:
-    st.markdown(f"<div style='text-align:center;'><span style='font-size:12px;color:gray;'>Code Requests</span><br><span style='font-size:16px;font-weight:normal;'>{total_code_requests:,}</span></div>", unsafe_allow_html=True)
+def _kpi_delta_pill(delta_str: str) -> str:
+    """Map the prior-period string onto the cost-summary pill."""
+    if delta_str in (None, "", "N/A"):
+        return ""
+    if delta_str == "New":
+        return '<span class="delta-pill up">new</span>'
+    raw = str(delta_str).strip().rstrip("%")
+    try:
+        pct = float(raw)
+    except ValueError:
+        return f'<span class="delta-pill flat">{delta_str} vs prior</span>'
+    if pct > 0:
+        return f'<span class="delta-pill up">↑ {pct:+.1f}%</span>'
+    if pct < 0:
+        return f'<span class="delta-pill down">↓ {pct:+.1f}%</span>'
+    return '<span class="delta-pill flat">0.0%</span>'
+
+
+def card_html(label: str, value: str, delta_html: str = "", foot_lines=None, primary: bool = False) -> str:
+    cls = "card primary" if primary else "card"
+    foot = "".join(f'<div class="foot">{line}</div>' for line in (foot_lines or []) if line)
+    return (
+        f'<div class="{cls}">'
+        f'<div class="label">{label}</div>'
+        f'<div class="value">{value}</div>'
+        f'{delta_html}'
+        f'{foot}'
+        f'</div>'
+    )
+
+
+# Render it to the page — same card treatment as cost_summary, same metrics.
+st.markdown(
+    f'<div class="panel-title" style="margin-bottom:.55rem;">Totals based on Date Range</div>',
+    unsafe_allow_html=True,
+)
+delta_html = _kpi_delta_pill(delta_str)
+cards = [
+    {
+        "label": "Total AI Credits",
+        "value": f"{total_credits:,.4f}",
+        "delta": delta_html,
+        "foot": [],
+        "primary": True,
+    },
+    {
+        "label": "Avg Daily Burn",
+        "value": f"{avg_daily:,.4f}",
+        "delta": "",
+        "foot": [],
+        "primary": False,
+    },
+    {
+        "label": "Top Service",
+        "value": str(top_service),
+        "delta": "",
+        "foot": [],
+        "primary": False,
+    },
+    {
+        "label": "Active Services",
+        "value": f"{int(active_services)}",
+        "delta": "",
+        "foot": [],
+        "primary": False,
+    },
+    {
+        "label": "Code Requests",
+        "value": f"{total_code_requests:,}",
+        "delta": "",
+        "foot": [],
+        "primary": False,
+    },
+]
+k = st.columns(5)
+for col, c in zip(k, cards):
+    with col:
+        st.markdown(
+            card_html(c["label"], c["value"], c["delta"], c["foot"], c["primary"]),
+            unsafe_allow_html=True,
+        )
 
 # ----------------------------------------------------------------------
 # Credits by Service Pie Chart (left) and Service Distribution (right)
