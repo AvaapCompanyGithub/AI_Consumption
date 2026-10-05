@@ -12,6 +12,7 @@ from typing import Optional
 import streamlit as st
 import pandas as pd
 import altair as alt
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from snowflake.snowpark.context import get_active_session
@@ -73,6 +74,38 @@ def run_optional(sql: str, start: str, end: str) -> pd.DataFrame:
         return _query(sql, start, end)
     except Exception:
         return pd.DataFrame()
+
+# ------------------------------------------------------------------
+# Config from config.json (same folder as this app)
+# ------------------------------------------------------------------
+
+def _load_config():
+    candidates = []
+    try:
+        candidates.append(Path(__file__).resolve().parent / "config.json")
+    except Exception:
+        pass
+    candidates.append(Path("config.json"))
+    for path in candidates:
+        if path.is_file():
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError("config.json must contain a JSON object")
+            return data, path
+    raise FileNotFoundError(
+        "config.json not found next to cost_summary.py. "
+        "Add config.json with contract_start, annual_capacity, credit_rate, credit_rate_label."
+    )
+
+_cfg, _cfg_path = _load_config()
+contract_start = datetime.strptime(str(_cfg["contract_start"])[:10], "%Y-%m-%d").date()
+annual_budget = float(_cfg["annual_capacity"])
+credit_price = float(_cfg["credit_rate"])
+rate_choice = str(_cfg.get("credit_rate_label", "") or "Configured rate")
+if credit_price <= 0:
+    rate_choice = "Credits only"
+date_range = str(_cfg.get("default_date_range", "TODAY")).upper()
 
 # ----------------------------------------------------------------------
 # Colors
@@ -265,6 +298,7 @@ DATE_PRESET_MAP = {
     "Year to Date": "YTD",
 }
 DATE_PRESETS = list(DATE_PRESET_MAP.keys()) + ["Custom"]
+LABEL_BY_CODE = {code: label for label, code in DATE_PRESET_MAP.items()}
 
 def dates_for(code, today):
     if code == "TODAY":
@@ -278,20 +312,27 @@ def dates_for(code, today):
         return today.replace(month=month, day=1), today
     return today.replace(month=1, day=1), today
 
-def on_preset_change():
-    code = DATE_PRESET_MAP.get(st.session_state.date_preset, "CUSTOM")
-    if code != "CUSTOM":
-        st.session_state.date_range = dates_for(code, datetime.now().date())
-
 def on_range_change():
+    preset = DATE_PRESET_MAP.get(st.session_state.get("date_preset"), "CUSTOM")
+    key = "calendar_custom" if preset == "CUSTOM" else f"calendar_{preset}"
+    picked = st.session_state.get(key)
+    if not (isinstance(picked, (tuple, list)) and len(picked) == 2):
+        for candidate in list(st.session_state.keys()):
+            if str(candidate).startswith("calendar_"):
+                value = st.session_state[candidate]
+                if isinstance(value, (tuple, list)) and len(value) == 2:
+                    picked = value
+                    break
+    if isinstance(picked, (tuple, list)) and len(picked) == 2:
+        st.session_state.custom_range = tuple(picked)
     st.session_state.date_preset = "Custom"
 
 if "last_refreshed" not in st.session_state:
     st.session_state.last_refreshed = datetime.now()
 if "date_preset" not in st.session_state:
-    st.session_state.date_preset = "Week to Date"
-if "date_range" not in st.session_state:
-    st.session_state.date_range = dates_for("YTD", datetime.now().date())
+    st.session_state.date_preset = LABEL_BY_CODE[date_range]
+if "custom_range" not in st.session_state:
+    st.session_state.custom_range = dates_for(date_range, datetime.now().date())
 
 title_col, range_col = st.columns([3.2, 1.3])
 with title_col:
@@ -303,28 +344,39 @@ with title_col:
         unsafe_allow_html=True,
     )
 
-with range_col:
-    st.selectbox(
-        "Date Range",
-        DATE_PRESETS,
-        key="date_preset",
-        on_change=on_preset_change,
-    )
-    st.date_input(
-        "Custom range",
-        key="date_range",
-        max_value=datetime.now().date(),
-        format="YYYY-MM-DD",
-        label_visibility="collapsed",
-        on_change=on_range_change,
-    )
+today = datetime.now().date()
+preset = DATE_PRESET_MAP.get(st.session_state.get("date_preset", "Year to Date"), "CUSTOM")
 
-picked = st.session_state.date_range
+with range_col:
+    st.selectbox("Date Range", DATE_PRESETS, key="date_preset")
+    if preset == "CUSTOM":
+        st.date_input(
+            "Custom range",
+            key="calendar_custom",
+            value=st.session_state.custom_range,
+            max_value=today,
+            format="YYYY-MM-DD",
+            label_visibility="collapsed",
+            on_change=on_range_change,
+        )
+        picked = st.session_state.calendar_custom
+    else:
+        forced = dates_for(preset, today)
+        st.date_input(
+            "Custom range",
+            key=f"calendar_{preset}",
+            value=forced,
+            max_value=today,
+            format="YYYY-MM-DD",
+            label_visibility="collapsed",
+            on_change=on_range_change,
+        )
+        picked = forced
+
 if isinstance(picked, (tuple, list)) and len(picked) == 2:
     start_date, end_date = picked
 else:
-    start_date = end_date = datetime.now().date()
-preset = DATE_PRESET_MAP.get(st.session_state.date_preset, "CUSTOM")
+    start_date = end_date = today
 
 with range_col:
     st.markdown(
