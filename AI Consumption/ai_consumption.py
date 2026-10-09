@@ -105,6 +105,18 @@ credit_price = float(_cfg["credit_rate"])
 rate_choice = str(_cfg.get("credit_rate_label", "") or "Configured rate")
 if credit_price <= 0:
     rate_choice = "Credits only"
+
+# Rate / capacity note (matches selected credit rate)
+if credit_price <= 0 or rate_choice == "Credits only":
+    rate_note = "Dollar figures suppressed. All values reported in credits."
+else:
+    rate_note = (
+        f"${credit_price:,.2f} per credit - configured rate for {rate_choice}. "
+        "Actual rates vary by cloud and region, and contracted rates may differ. "
+        "Treat dollar figures as indicative. Capacity remaining is measured from the "
+        "current contract anniversary through today, independent of the date range above."
+    )
+
 date_range = str(_cfg.get("default_date_range", "TODAY")).upper()
 
 # ----------------------------------------------------------------------
@@ -386,7 +398,7 @@ with range_col:
         unsafe_allow_html=True,
     )
 
-st.markdown("---")
+st.divider()
 
 # ACCOUNT_USAGE ranges are half-open; end bound is exclusive.
 p_start = start_date.strftime("%Y-%m-%d")
@@ -528,12 +540,13 @@ def card_html(label: str, value: str, delta_html: str = "", foot_lines=None, pri
         f'</div>'
     )
 
-
-# Render it to the page — same card treatment as cost_summary, same metrics.
 st.markdown(
-    f'<div class="panel-title" style="margin-bottom:.55rem;">Totals based on Date Range</div>',
+    f'<div style="color:{MUTED};font-size:0.72rem;margin:-1rem 0 0 0;padding:0 0 0.65rem 0;">'
+    f'Change vs prior period ({preset}).'
+    f'</div>',
     unsafe_allow_html=True,
 )
+
 delta_html = _kpi_delta_pill(delta_str)
 cards = [
     {
@@ -580,11 +593,12 @@ for col, c in zip(k, cards):
             unsafe_allow_html=True,
         )
 
+st.divider()
+
 # ----------------------------------------------------------------------
 # Credits by Service Pie Chart (left) and Service Distribution (right)
 # ----------------------------------------------------------------------
 
-st.markdown("---")
 left, right = st.columns(2)
 with left:
     st.subheader("Credits by Service")
@@ -619,7 +633,7 @@ with right:
 # ----------------------------------------------------------------------
 
 #Credit Summary
-st.markdown("---")
+st.divider()
 st.subheader("Credit Summary Table")
 st.dataframe(df_summary.sort_values("CREDITS", ascending=False).reset_index(drop=True), use_container_width=True, hide_index=True)
 
@@ -627,7 +641,7 @@ st.dataframe(df_summary.sort_values("CREDITS", ascending=False).reset_index(drop
 # Daily Credit Trend
 # ----------------------------------------------------------------------
 
-st.markdown("---")
+st.divider()
 st.subheader("Daily Credit Trend (All Services)")
 
 #Filter by Services, Warehouse, Database
@@ -725,7 +739,7 @@ else:
 # Cost Efficiency
 # ----------------------------------------------------------------------
 
-st.markdown("---")
+st.divider()
 st.subheader("Cost Efficiency by Service")
 
 #Query
@@ -791,7 +805,7 @@ else:
 # Users by credit
 # ----------------------------------------------------------------------
 
-st.markdown("---")
+st.divider()
 st.subheader("Top Users by AI Credits")
 
 #Tabs showing top users by Service type
@@ -893,7 +907,7 @@ with tab5:
 # Users by Highest Service/Cost
 # ----------------------------------------------------------------------
 
-st.markdown("---")
+st.divider()
 st.subheader("Highest Cost-per-Request by User")
 
 #Query
@@ -959,3 +973,24 @@ if not df_user_eff.empty:
     st.dataframe(df_user_eff[["USER_NAME", "SERVICE", "TOTAL_CREDITS", "TOTAL_REQUESTS", "COST_PER_REQUEST"]].reset_index(drop=True), use_container_width=True, hide_index=True)
 else:
     st.info("No user request data in selected period.")
+
+# -------------------------------------------------
+# Notes
+# -------------------------------------------------
+
+st.divider()
+
+st.markdown(
+    f"""
+    <div class="note">
+    ACCOUNT_USAGE views are not real time. Cortex usage lags
+    by about 5 minutes. Ranges that include today or yesterday will therefore
+    understate actual consumption, and the most recent day is always partial.<br><br>
+    Figures are drawn from ACCOUNT_USAGE and are for internal analysis only -
+    they will not tie exactly to your Snowflake invoice. Use ORGANIZATION_USAGE
+    or the billing statement for figures of record.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
